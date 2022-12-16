@@ -3,7 +3,6 @@
 #define SLEEP 3 //is sleeping
 #define THINK 4 //is thinking
 #define DIED 5  //is died
-#define USLEEP_T 1000
 
 #include "libft/libft.h"
 #include <bits/pthreadtypes.h>
@@ -35,82 +34,47 @@ typedef struct s_thread
 	int				last_meal;
 }					t_thread;
 
-void	ft_print_log(int timestamp, int philosopher_nb, int action)
+void				ft_print_log(int timestamp, int philosopher_nb, int action);
+
+void	ft_go_to_eat(t_thread *philo)
 {
-	if (action == EAT)
-		printf("%d %d %s\n", timestamp, philosopher_nb, "eats");
-	if (action == FORK)
-		printf("%d %d %s\n", timestamp, philosopher_nb, "has taken a fork");
-	if (action == 5)
-		printf("%d %d %s\n", timestamp, philosopher_nb, "has release forks");
-	if (action == SLEEP)
-		printf("%d %d %s\n", timestamp, philosopher_nb, "sleeps");
-	if (action == THINK)
-		printf("%d %d %s\n", timestamp, philosopher_nb, "thinks");
-}
+	int				right;
+	int				left;
+	struct timeval	current_time;
 
-void get_forks(t_thread *philo)
+	left = philo->index;
+	right = (philo->index + 1) % philo->set->nb_philos;
+	pthread_mutex_lock(&philo->forks[left]);
+	gettimeofday(&current_time, NULL);
+	ft_print_log(current_time.tv_usec, philo->index, EAT);
+	pthread_mutex_lock(&philo->forks[right]);
+	gettimeofday(&current_time, NULL);
+	ft_print_log(current_time.tv_usec, philo->index, EAT);
+	philo->status = EAT;
+	usleep(philo->set->eat_duration);
+	pthread_mutex_unlock(&philo->forks[left]);
+	pthread_mutex_unlock(&philo->forks[right]);
+	philo->status = SLEEP;
+	usleep(philo->set->sleep_duration);
+}
+void	*ft_simulation(void *thread)
 {
-    int i;
-    struct timeval curr_time;
+	t_thread	*philo;
+	int			right;
+	int			left;
+    struct timeval current_time;
 
-    i = philo->index;
-    if (philo->index % 2 == 0)
-    {
-        pthread_mutex_lock(&philo->forks[i]);
-        ft_print_log(philo->last_meal, philo->index, EAT);
-        pthread_mutex_lock(&philo->forks[(i + 1) % philo->set->nb_philos]);
-        ft_print_log(philo->last_meal, philo->index, EAT);
-    }
-    else
-    {
-        pthread_mutex_lock(&philo->forks[(i + 1) % philo->set->nb_philos]);
-        ft_print_log(philo->last_meal, philo->index, EAT);
-        pthread_mutex_lock(&philo->forks[i]);
-        ft_print_log(philo->last_meal, philo->index, EAT);
-    }
-    gettimeofday(&curr_time, NULL);
-    philo->last_meal = curr_time.tv_usec;
-    ft_print_log(philo->last_meal, philo->index, EAT);
-    philo->status = SLEEP;
+	philo = (t_thread *)thread;
+	gettimeofday(&current_time, NULL);
+	while (philo->status != DIED)
+	{
+        if (current_time.tv_usec > philo->last_meal + philo->set->die_time)
+            philo->status = DIED;
+        else if (philo->status == THINK)
+			ft_go_to_eat(thread);
+	}
+	return (0);
 }
-
-void release_forks(t_thread *philo)
-{
-    int i;
-    struct timeval curr_time;
-
-    i = philo->index;
-    pthread_mutex_unlock(&philo->forks[(i + 1) % philo->set->nb_philos]);
-    pthread_mutex_unlock(&philo->forks[i]);
-    gettimeofday(&curr_time, NULL);
-    ft_print_log(curr_time.tv_usec, philo->index, EAT);
-}
-
-void    sleeping(unsigned long sleep_time)
-{
-    while (sleep_time - USLEEP_T > 0)
-    {
-        usleep(USLEEP_T);
-        sleep_time -= USLEEP_T;
-    }
-    usleep(sleep_time);
-}
-
-void ft_simulation(void *philo)
-{
-    t_thread *philosopher;
-
-    philosopher = (t_thread *) philo;
-    while (philosopher->set->death != 0)
-    {
-        philosopher->status = THINK;
-        get_forks(philosopher);
-        release_forks(philosopher);
-        sleeping(philosopher->set->sleep_duration);
-    }
-}
-
 pthread_mutex_t	*ft_init_forks(t_input *inputs)
 {
 	int				i;
@@ -145,14 +109,13 @@ t_thread	*ft_init_threads(t_input *inputs)
 		threads[i].status = THINK;
 		threads[i].forks = forks;
 		threads[i].last_meal = inputs->start_time;
-		threads[i].thread = malloc(sizeof(pthread_t));
 		pthread_create(threads[i].thread, NULL, (void *)ft_simulation,
 				(void *)&threads[i]);
 		i++;
 	}
 	i = 0;
 	while (i < inputs->nb_philos)
-		pthread_join(*(threads[i++].thread), NULL);
+		pthread_join(*(threads[i].thread), NULL);
 	return (threads);
 }
 
@@ -175,6 +138,18 @@ t_input	*ft_init_input(int nb_args, char **args)
 		input->nb_of_meals = ft_atoi(args[5]);
 	input->start_time = start.tv_usec;
 	return (input);
+}
+
+void	ft_print_log(int timestamp, int philosopher_nb, int action)
+{
+	if (action == EAT)
+		printf("%d %d %s\n", timestamp, philosopher_nb, "eats");
+	if (action == FORK)
+		printf("%d %d %s\n", timestamp, philosopher_nb, "has taken a fork");
+	if (action == SLEEP)
+		printf("%d %d %s\n", timestamp, philosopher_nb, "sleeps");
+	if (action == THINK)
+		printf("%d %d %s\n", timestamp, philosopher_nb, "thinks");
 }
 
 void	ft_free_malloced_array(void **array, int index)
