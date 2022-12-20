@@ -1,100 +1,4 @@
-#define EAT 1    //is eating
-#define FORK 2   //has taken a fork
-#define SLEEP 3  //is sleeping
-#define THINK 4  //is thinking
-#define DIED 5   //is died
-#define UNFORK 6 //release f_mutex
-#define USLEEP_T 1000
-#define GET 1
-#define PUT 2
-#define AVAILABLE 0
-#define USED 1
-
-#include "libft/libft.h"
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/time.h>
-#include <unistd.h>
-
-typedef struct timeval
-	t_timev;
-
-typedef struct s_input
-{
-	int				nb_philos;
-	int				complete_nb_of_meals;
-	int				end_simulation;
-	pthread_mutex_t	death_mutex;
-	pthread_mutex_t	all_meals;
-	unsigned long	die_time;
-	unsigned long	eat_duration;
-	unsigned long	sleep_duration;
-	long			every_meals_taken;
-	t_timev			start_time;
-}					t_input;
-
-typedef struct s_thread
-{
-	t_input			*set;
-	int				index;
-	pthread_t		*thread;
-	pthread_mutex_t	*f_mutex;
-	int				*f_status;
-	int				status;
-	int				last_meal;
-}					t_thread;
-
-unsigned long	get_timestamp(t_timev start_time)
-{
-	t_timev		current_time;
-	unsigned	tstamp;
-
-	gettimeofday(&current_time, NULL);
-	tstamp = (current_time.tv_sec - start_time.tv_sec) * 1000;
-	tstamp += (current_time.tv_usec - start_time.tv_usec) / 1000;
-	return (tstamp);
-}
-
-int	is_end_of_simulation(t_thread *philo)
-{
-	int is_end;
-
-	pthread_mutex_lock(&philo->set->death_mutex);
-	pthread_mutex_lock(&philo->set->all_meals);
-	is_end = philo->set->end_simulation;
-    if (philo->set->nb_philos <= philo->set->every_meals_taken)
-        is_end = (1);
-	pthread_mutex_unlock(&philo->set->all_meals);
-	pthread_mutex_unlock(&philo->set->death_mutex);
-	return (is_end);
-}
-
-void	ft_print_log(unsigned long tstamp, int philo_nb, int action)
-{
-	if (action == EAT)
-		printf("%-5lu %d %s\n", tstamp, philo_nb + 1, "is eating");
-	if (action == FORK)
-		printf("%-5lu %d %s\n", tstamp, philo_nb + 1, "has taken a fork");
-	if (action == UNFORK)
-		printf("%-5lu %d %s\n", tstamp, philo_nb + 1, "has release forks");
-	if (action == SLEEP)
-		printf("%-5lu %d %s\n", tstamp, philo_nb + 1, "is sleeping");
-	if (action == THINK)
-		printf("%-5lu %d %s\n", tstamp, philo_nb + 1, "is thinking");
-	if (action == DIED)
-		printf("%-5lu %d %s\n", tstamp, philo_nb + 1, "died");
-}
-
-void	freeze_thread(t_thread *philo, int action, unsigned sleep_t,
-		unsigned tstamp)
-{
-	unsigned long	target;
-	unsigned long	current_time;
-
-	target = (tstamp + sleep_t);
-	current_time = 0;
-	// dprintf(2, "current_time = %lu | target = %lu \n", , target);
+dprintf(2, "current_time = %lu | target = %lu \n", , target);
 	while (current_time < target)
 	{
 		usleep(USLEEP_T);
@@ -134,8 +38,11 @@ int	is_alive(t_thread *philo)
 	{
 		pthread_mutex_lock(&philo->set->death_mutex);
 		philo->set->end_simulation += 1;
-        if (philo->set->end_simulation == 1)
+		if (philo->set->end_simulation == 1)
+		{
             ft_print_log(current_time, philo->index, DIED);
+			return current_time;
+		}
 		pthread_mutex_unlock(&philo->set->death_mutex);
 	}
 	else
@@ -154,17 +61,16 @@ int	get_forks(t_thread *philo, int f_one, int f_two)
 			return (0);
 	}
 	tstamp = get_timestamp(philo->set->start_time);
-    if (!is_end_of_simulation(philo))
-        ft_print_log(tstamp, philo->index, FORK);
+	ft_print_log(tstamp, philo->index, FORK);
 	while (!fork_access(&philo->f_mutex[f_two], &philo->f_status[f_two], GET))
 	{
 		tstamp = is_alive(philo);
 		if (tstamp)
+			ft_print_log(tstamp, philo->index, DIED);
 			return (0);
 	}
 	tstamp = get_timestamp(philo->set->start_time);
-    if (!is_end_of_simulation(philo))
-        ft_print_log(tstamp, philo->index, FORK);
+	ft_print_log(tstamp, philo->index, FORK);
 	return (1);
 }
 
@@ -175,7 +81,7 @@ int	try_to_get_forks(t_thread *philo)
 
 	left = philo->index;
 	right = (philo->index + 1) % philo->set->nb_philos;
-	if (philo->index % 2 && philo->set->nb_philos % 2)
+	if (philo->index % 2)
 		return (get_forks(philo, right, left));
 	else
 		return (get_forks(philo, left, right));
@@ -191,10 +97,11 @@ void	release_forks(t_thread *philo)
 	right = (philo->index + 1) % philo->set->nb_philos;
 	fork_access(&philo->f_mutex[left], &philo->f_status[left], PUT);
 	fork_access(&philo->f_mutex[right], &philo->f_status[right], PUT);
+	if (philo->set->end_simulation)
+		return ;
 	//no need to print log - debug purpose only
 	tstamp = get_timestamp(philo->set->start_time);
-    if (!is_end_of_simulation(philo))
-        ft_print_log(tstamp, philo->index, UNFORK);
+	ft_print_log(tstamp, philo->index, UNFORK);
 }
 
 void	is_eating(t_thread *philo)
@@ -203,8 +110,9 @@ void	is_eating(t_thread *philo)
 
 	tstamp = get_timestamp(philo->set->start_time);
 	philo->last_meal = tstamp;
-    if (!is_end_of_simulation(philo))
-        ft_print_log(tstamp, philo->index, EAT);
+	if (philo->set->end_simulation)
+		return ;
+	ft_print_log(tstamp, philo->index, EAT);
 	freeze_thread(philo, EAT, philo->set->eat_duration, tstamp);
 }
 
@@ -213,8 +121,9 @@ void	is_sleeping(t_thread *philo)
 	unsigned long	tstamp;
 
 	tstamp = get_timestamp(philo->set->start_time);
-	if (!is_end_of_simulation(philo))
-        ft_print_log(tstamp, philo->index, SLEEP);
+	if (philo->set->end_simulation)
+		return ;
+	ft_print_log(tstamp, philo->index, SLEEP);
 	freeze_thread(philo, SLEEP, philo->set->sleep_duration, tstamp);
 }
 
@@ -223,9 +132,8 @@ void	is_thinking(t_thread *philo)
 	unsigned long	tstamp;
 
 	tstamp = get_timestamp(philo->set->start_time);
-	if (!is_end_of_simulation(philo))
-        ft_print_log(tstamp, philo->index, THINK);
-    usleep(50);
+	ft_print_log(tstamp, philo->index, THINK);
+    usleep(100);
 }
 
 void	*ft_simulation(void *philosopher)
@@ -239,11 +147,12 @@ void	*ft_simulation(void *philosopher)
 	{
 		if (philo->set->end_simulation)
 			break ;
-		try_to_get_forks(philo);
-		is_eating(philo);
-		nb_of_meals++;
 		if (nb_of_meals == philo->set->complete_nb_of_meals)
 			philo->set->every_meals_taken += 1;
+		if (!try_to_get_forks(philo))
+			return (NULL);
+		is_eating(philo);
+		nb_of_meals++;
 		release_forks(philo);
 		is_sleeping(philo);
 		is_thinking(philo);
@@ -267,6 +176,7 @@ pthread_mutex_t	*ft_init_forks(t_input *inputs)
 	while (i < inputs->nb_philos)
 	{
 		pthread_mutex_init(&f_mutex[i], NULL);
+		//dprintf(2, "\n");
 		i++;
 	}
 	return (f_mutex);
@@ -307,7 +217,6 @@ t_thread	*ft_init_threads(t_input *inputs)
 	f_status = calloc(inputs->nb_philos, sizeof(int));
 	threads = malloc(inputs->nb_philos * sizeof(t_thread));
 	pthread_mutex_init(&inputs->death_mutex, NULL);
-	pthread_mutex_init(&inputs->all_meals, NULL);
 	if (!threads || !f_status)
 		return (NULL);
 	while (i < inputs->nb_philos)
@@ -393,7 +302,7 @@ int	main(int argc, char **argv)
 	if (!input_set)
 		exit(EXIT_FAILURE);
 	threads = ft_init_threads(input_set);
-    usleep(100);
+	usleep(2000);
 	ft_destroy_all_mutexes(threads->f_mutex, 0);
 	ft_free_all(threads);
 	// ft_free_malloced_array(input_set->last_meal, input_set->nb_philos)
